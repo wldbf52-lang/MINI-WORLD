@@ -5,129 +5,132 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>MINI WORLD</title>
+  <script src="https://cdn.jsdelivr.net/npm/phaser@3.90.0/dist/phaser.min.js"></script>
   <style>
     body {
       margin: 0;
+      background: #91d9ff;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
       overflow: hidden;
-      font-family: Arial, sans-serif;
     }
-
-    #title {
-      position: absolute;
-      top: 20px;
-      width: 100%;
-      text-align: center;
-      color: white;
-      font-size: 36px;
-      font-weight: bold;
-      text-shadow: 2px 2px 5px #333;
-      pointer-events: none;
+    canvas {
+      max-width: 100%;
+      max-height: 100vh;
+      image-rendering: pixelated;
     }
   </style>
 </head>
 <body>
-  <div id="title">MINI WORLD</div>
+<script>
+class GameScene extends Phaser.Scene {
+  constructor() {
+    super("GameScene");
+  }
 
-  <script type="module">
-    import * as THREE from
-      'https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js';
+  create() {
+    this.add.rectangle(400, 300, 800, 600, 0x91d9ff);
 
-    const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x87ceeb);
-
-    const camera = new THREE.PerspectiveCamera(
-      70, window.innerWidth / window.innerHeight, 0.1, 1000
-    );
-
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    document.body.appendChild(renderer.domElement);
-
-    scene.add(new THREE.HemisphereLight(0xffffff, 0x668866, 2));
-
-    const sun = new THREE.DirectionalLight(0xffffff, 2);
-    sun.position.set(5, 10, 5);
-    scene.add(sun);
-
-    // 하늘섬
-    const island = new THREE.Mesh(
-      new THREE.CylinderGeometry(12, 9, 3, 8),
-      new THREE.MeshStandardMaterial({ color: 0x55bb66 })
-    );
-    island.position.y = -1.5;
-    scene.add(island);
-
-    // 주황색 고양이
-    const cat = new THREE.Group();
-    scene.add(cat);
-
-    const orange = new THREE.MeshStandardMaterial({ color: 0xff922e });
-    const dark = new THREE.MeshStandardMaterial({ color: 0x553322 });
-    const white = new THREE.MeshStandardMaterial({ color: 0xffffff });
-
-    function part(geometry, material, x, y, z) {
-      const mesh = new THREE.Mesh(geometry, material);
-      mesh.position.set(x, y, z);
-      cat.add(mesh);
-      return mesh;
+    // 구름
+    for (let i = 0; i < 6; i++) {
+      const x = 80 + i * 145;
+      this.add.circle(x, 90 + (i % 2) * 35, 25, 0xffffff);
+      this.add.circle(x + 25, 90 + (i % 2) * 35, 32, 0xffffff);
+      this.add.circle(x + 55, 90 + (i % 2) * 35, 23, 0xffffff);
     }
 
-    // 몸통
-    part(new THREE.BoxGeometry(1, 1.2, 0.6), orange, 0, 1.1, 0);
+    // 바닥
+    this.platforms = this.physics.add.staticGroup();
+    this.platforms.create(400, 570, null)
+      .setDisplaySize(800, 60)
+      .setTint(0x55c96b)
+      .refreshBody();
 
-    // 머리
-    part(new THREE.BoxGeometry(1, 0.9, 0.8), orange, 0, 2.2, 0);
+    // 발판
+    const p1 = this.add.rectangle(280, 440, 150, 20, 0x55c96b);
+    const p2 = this.add.rectangle(520, 330, 150, 20, 0x55c96b);
+    this.physics.add.existing(p1, true);
+    this.physics.add.existing(p2, true);
+    this.platforms.add(p1);
+    this.platforms.add(p2);
 
-    // 귀
-    part(new THREE.ConeGeometry(0.25, 0.5, 4), orange, -0.32, 2.9, 0);
-    part(new THREE.ConeGeometry(0.25, 0.5, 4), orange, 0.32, 2.9, 0);
+    // 고양이
+    this.cat = this.add.container(120, 500);
+    const body = this.add.rectangle(0, 0, 34, 42, 0xffa33b);
+    const ear1 = this.add.triangle(-12, -23, -9, 10, 0, -10, 9, 10, 0xffa33b);
+    const ear2 = this.add.triangle(12, -23, -9, 10, 0, -10, 9, 10, 0xffa33b);
+    const eye1 = this.add.circle(-7, -3, 3, 0x333333);
+    const eye2 = this.add.circle(7, -3, 3, 0x333333);
+    const nose = this.add.triangle(0, 5, -4, 0, 4, 0, 0, 5, 0xff7777);
+    this.cat.add([body, ear1, ear2, eye1, eye2, nose]);
 
-    // 눈
-    part(new THREE.SphereGeometry(0.07), white, -0.2, 2.25, 0.41);
-    part(new THREE.SphereGeometry(0.07), white, 0.2, 2.25, 0.41);
+    this.physics.add.existing(this.cat);
+    this.cat.body.setSize(30, 40);
+    this.cat.body.setCollideWorldBounds(true);
+    this.cat.body.setGravityY(900);
 
-    // 다리
-    part(new THREE.BoxGeometry(0.3, 0.7, 0.35), orange, -0.28, 0.2, 0);
-    part(new THREE.BoxGeometry(0.3, 0.7, 0.35), orange, 0.28, 0.2, 0);
+    this.physics.add.collider(this.cat, this.platforms);
 
-    // 꼬리
-    const tail = part(
-      new THREE.BoxGeometry(0.2, 0.8, 0.2),
-      orange, 0.65, 1.2, -0.2
+    this.keys = this.input.keyboard.addKeys(
+      "LEFT,RIGHT,A,D,SPACE,UP"
     );
-    tail.rotation.z = -0.5;
 
-    // 카메라
-    camera.position.set(0, 4, 9);
-    camera.lookAt(0, 1, 0);
+    this.add.text(20, 20,
+      "MINI WORLD", {
+        fontSize: "28px",
+        color: "#ffffff",
+        fontStyle: "bold",
+        stroke: "#333333",
+        strokeThickness: 4
+      }
+    );
 
-    // 이동
-    const keys = {};
-    window.addEventListener('keydown', e => keys[e.key.toLowerCase()] = true);
-    window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
+    this.add.text(20, 555,
+      "이동: A / D 또는 방향키   점프: SPACE", {
+        fontSize: "16px",
+        color: "#ffffff",
+        stroke: "#333333",
+        strokeThickness: 3
+      }
+    );
+  }
 
-    function animate() {
-      requestAnimationFrame(animate);
+  update() {
+    const body = this.cat.body;
+    body.setVelocityX(0);
 
-      if (keys['w']) cat.position.z -= 0.08;
-      if (keys['s']) cat.position.z += 0.08;
-      if (keys['a']) cat.position.x -= 0.08;
-      if (keys['d']) cat.position.x += 0.08;
-
-      camera.position.x = cat.position.x;
-      camera.position.z = cat.position.z + 9;
-      camera.lookAt(cat.position.x, 1, cat.position.z);
-
-      renderer.render(scene, camera);
+    if (this.keys.LEFT.isDown || this.keys.A.isDown) {
+      body.setVelocityX(-230);
+    } else if (this.keys.RIGHT.isDown || this.keys.D.isDown) {
+      body.setVelocityX(230);
     }
 
-    animate();
+    if (
+      (Phaser.Input.Keyboard.JustDown(this.keys.SPACE) ||
+       Phaser.Input.Keyboard.JustDown(this.keys.UP)) &&
+      body.blocked.down
+    ) {
+      body.setVelocityY(-450);
+    }
+  }
+}
 
-    window.addEventListener('resize', () => {
-      camera.aspect = window.innerWidth / window.innerHeight;
-      camera.updateProjectionMatrix();
-      renderer.setSize(window.innerWidth, window.innerHeight);
-    });
-  </script>
+const config = {
+  type: Phaser.AUTO,
+  width: 800,
+  height: 600,
+  pixelArt: true,
+  physics: {
+    default: "arcade",
+    arcade: { debug: false }
+  },
+  scene: GameScene
+};
+
+new Phaser.Game(config);
+</script>
 </body>
 </html>
+
