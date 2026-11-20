@@ -1,135 +1,1537 @@
 
+
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>MINI WORLD</title>
-  <script src="https://cdn.jsdelivr.net/npm/phaser@3.90.0/dist/phaser.min.js"></script>
-  <style>
-    body {
-      margin: 0;
-      background: #91d9ff;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      min-height: 100vh;
-      overflow: hidden;
-    }
-    canvas {
-      max-width: 100%;
-      max-height: 100vh;
-      image-rendering: pixelated;
-    }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MINI WORLD</title>
+
+<script src="https://cdn.jsdelivr.net/npm/phaser@3.90.0/dist/phaser.min.js"></script>
+
+<style>
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background: #172b48;
+  overflow: hidden;
+  font-family: Arial, sans-serif;
+}
+
+#game {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+canvas {
+  max-width: 100%;
+  max-height: 100vh;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+</style>
 </head>
+
 <body>
+<div id="game"></div>
+
 <script>
-class GameScene extends Phaser.Scene {
+
+// ======================================
+// MINI WORLD
+// 2D ENDLESS RUNNER
+// ======================================
+
+const GAME_WIDTH = 900;
+const GAME_HEIGHT = 600;
+
+const FLOOR_TOP = 300;
+const FLOOR_BOTTOM = 510;
+
+const PLAYER_X = 170;
+
+const STORAGE_KEY = "miniWorldBestScore";
+
+class MiniWorld extends Phaser.Scene {
+
   constructor() {
-    super("GameScene");
+    super("MiniWorld");
   }
 
   create() {
-    this.add.rectangle(400, 300, 800, 600, 0x91d9ff);
 
-    // 구름
-    for (let i = 0; i < 6; i++) {
-      const x = 80 + i * 145;
-      this.add.circle(x, 90 + (i % 2) * 35, 25, 0xffffff);
-      this.add.circle(x + 25, 90 + (i % 2) * 35, 32, 0xffffff);
-      this.add.circle(x + 55, 90 + (i % 2) * 35, 23, 0xffffff);
-    }
+    // 게임 상태
+    this.gameState = "menu";
+
+    // 점수
+    this.score = 0;
+    this.bestScore = this.loadBestScore();
+    this.distance = 0;
+
+    // 달리기 설정
+    this.speed = 340;
+    this.baseSpeed = 340;
+    this.maxSpeed = 650;
+
+    // 층 설정
+    this.lane = 1;
+    this.targetLane = 1;
+
+    // 점프 설정
+    this.velocityY = 0;
+    this.gravity = 1300;
+    this.jumpPower = -510;
+    this.jumpCount = 0;
+    this.maxJumps = 2;
+
+    this.playerY = FLOOR_BOTTOM - 35;
+    this.grounded = true;
+
+    // 생성 간격
+    this.obstacleTimer = 0;
+    this.coinTimer = 0;
+    this.nextObstacle = 1.7;
+    this.nextCoin = 2.5;
+
+    // 게임 오브젝트
+    this.obstacles = [];
+    this.coins = [];
+    this.particles = [];
+
+    // 배경
+    this.createBackground();
 
     // 바닥
-    this.platforms = this.physics.add.staticGroup();
-    this.platforms.create(400, 570, null)
-      .setDisplaySize(800, 60)
-      .setTint(0x55c96b)
-      .refreshBody();
+    this.createFloors();
 
-    // 발판
-    const p1 = this.add.rectangle(280, 440, 150, 20, 0x55c96b);
-    const p2 = this.add.rectangle(520, 330, 150, 20, 0x55c96b);
-    this.physics.add.existing(p1, true);
-    this.physics.add.existing(p2, true);
-    this.platforms.add(p1);
-    this.platforms.add(p2);
+    // 캐릭터
+    this.createPlayer();
 
-    // 고양이
-    this.cat = this.add.container(120, 500);
-    const body = this.add.rectangle(0, 0, 34, 42, 0xffa33b);
-    const ear1 = this.add.triangle(-12, -23, -9, 10, 0, -10, 9, 10, 0xffa33b);
-    const ear2 = this.add.triangle(12, -23, -9, 10, 0, -10, 9, 10, 0xffa33b);
-    const eye1 = this.add.circle(-7, -3, 3, 0x333333);
-    const eye2 = this.add.circle(7, -3, 3, 0x333333);
-    const nose = this.add.triangle(0, 5, -4, 0, 4, 0, 0, 5, 0xff7777);
-    this.cat.add([body, ear1, ear2, eye1, eye2, nose]);
+    // 키보드
+    this.createControls();
 
-    this.physics.add.existing(this.cat);
-    this.cat.body.setSize(30, 40);
-    this.cat.body.setCollideWorldBounds(true);
-    this.cat.body.setGravityY(900);
+    // UI
+    this.createUI();
 
-    this.physics.add.collider(this.cat, this.platforms);
+    // 시작 화면
+    this.createMenu();
 
-    this.keys = this.input.keyboard.addKeys(
-      "LEFT,RIGHT,A,D,SPACE,UP"
+    // 애니메이션
+    this.createAnimations();
+
+  }
+
+  // ======================================
+  // 저장 시스템
+  // ======================================
+
+  loadBestScore() {
+
+    try {
+      return Number(
+        localStorage.getItem(STORAGE_KEY) || 0
+      );
+    } catch (e) {
+      return 0;
+    }
+
+  }
+
+  saveBestScore() {
+
+    try {
+      localStorage.setItem(
+        STORAGE_KEY,
+        String(this.bestScore)
+      );
+    } catch (e) {
+      console.log("기록 저장을 사용할 수 없습니다.");
+    }
+
+  }
+
+  // ======================================
+  // 배경
+  // ======================================
+
+  createBackground() {
+
+    this.background = this.add.graphics();
+
+    this.background.fillGradientStyle(
+      0x77d7ff,
+      0x77d7ff,
+      0xd2f4ff,
+      0xd2f4ff,
+      1
     );
 
-    this.add.text(20, 20,
-      "MINI WORLD", {
-        fontSize: "28px",
+    this.background.fillRect(
+      0, 0, GAME_WIDTH, GAME_HEIGHT
+    );
+
+    // 먼 산
+    this.background.fillStyle(0x91d9b1);
+
+    this.background.fillTriangle(
+      0, 350,
+      200, 170,
+      400, 350
+    );
+
+    this.background.fillTriangle(
+      300, 350,
+      560, 180,
+      800, 350
+    );
+
+    this.background.fillTriangle(
+      650, 350,
+      850, 210,
+      1050, 350
+    );
+
+    // 구름
+    this.clouds = [];
+
+    for (let i = 0; i < 8; i++) {
+
+      const x = Phaser.Math.Between(0, GAME_WIDTH);
+      const y = Phaser.Math.Between(50, 210);
+
+      const cloud = this.add.container(x, y);
+
+      const a = this.add.circle(
+        0, 0, 22, 0xffffff
+      );
+
+      const b = this.add.circle(
+        25, -10, 28, 0xffffff
+      );
+
+      const c = this.add.circle(
+        53, 0, 21, 0xffffff
+      );
+
+      cloud.add([a, b, c]);
+
+      this.clouds.push(cloud);
+
+    }
+
+  }
+
+  // ======================================
+  // 바닥과 층
+  // ======================================
+
+  createFloors() {
+
+    this.floorGraphics = this.add.graphics();
+
+    this.drawFloors();
+
+  }
+
+  drawFloors() {
+
+    const g = this.floorGraphics;
+
+    g.clear();
+
+    // 2층 바닥
+    g.fillStyle(0x4baf73);
+    g.fillRect(
+      0, FLOOR_TOP, GAME_WIDTH, 18
+    );
+
+    g.fillStyle(0x287f53);
+    g.fillRect(
+      0, FLOOR_TOP + 18,
+      GAME_WIDTH, 12
+    );
+
+    // 1층 바닥
+    g.fillStyle(0x4baf73);
+    g.fillRect(
+      0, FLOOR_BOTTOM, GAME_WIDTH, 18
+    );
+
+    g.fillStyle(0x287f53);
+    g.fillRect(
+      0, FLOOR_BOTTOM + 18,
+      GAME_WIDTH, 12
+    );
+
+    // 바닥 무늬
+    g.fillStyle(0x91e29b);
+
+    for (let x = 0; x < GAME_WIDTH; x += 50) {
+
+      g.fillRect(
+        x, FLOOR_TOP + 5, 25, 3
+      );
+
+      g.fillRect(
+        x, FLOOR_BOTTOM + 5, 25, 3
+      );
+
+    }
+
+  }
+
+  // ======================================
+  // 고양이 캐릭터
+  // ======================================
+
+  createPlayer() {
+
+    this.player = this.add.container(
+      PLAYER_X,
+      this.playerY
+    );
+
+    // 그림자
+    this.shadow = this.add.ellipse(
+      PLAYER_X,
+      FLOOR_BOTTOM - 5,
+      65,
+      13,
+      0x225044,
+      0.25
+    );
+
+    this.shadow.setDepth(2);
+
+    // 꼬리
+    this.tail = this.add.ellipse(
+      -24, 7, 27, 12, 0xffa13b
+    );
+
+    this.tail.setRotation(-0.5);
+
+    // 몸
+    this.bodyShape = this.add.ellipse(
+      0, 0, 43, 46, 0xffa13b
+    );
+
+    // 배
+    this.belly = this.add.ellipse(
+      0, 8, 23, 25, 0xffd18a
+    );
+
+    // 다리
+    this.legLeft = this.add.rectangle(
+      -12, 23, 12, 17, 0xe88b2d
+    );
+
+    this.legRight = this.add.rectangle(
+      12, 23, 12, 17, 0xe88b2d
+    );
+
+    // 귀 - 머리 중앙 쪽으로 모음
+    this.earLeft = this.add.triangle(
+      -11, -21,
+      -10, 10,
+      0, -13,
+      10, 10,
+      0xffa13b
+    );
+
+    this.earRight = this.add.triangle(
+      11, -21,
+      -10, 10,
+      0, -13,
+      10, 10,
+      0xffa13b
+    );
+
+    // 귀 안쪽
+    this.innerEarLeft = this.add.triangle(
+      -11, -20,
+      -5, 5,
+      0, -7,
+      5, 5,
+      0xff91a9
+    );
+
+    this.innerEarRight = this.add.triangle(
+      11, -20,
+      -5, 5,
+      0, -7,
+      5, 5,
+      0xff91a9
+    );
+
+    // 눈
+    this.eyeLeft = this.add.ellipse(
+      -8, -3, 5, 8, 0x292929
+    );
+
+    this.eyeRight = this.add.ellipse(
+      8, -3, 5, 8, 0x292929
+    );
+
+    // 코
+    this.nose = this.add.triangle(
+      0, 5,
+      -4, -2,
+      4, -2,
+      0, 5,
+      0xf08091
+    );
+
+    // 입
+    this.mouth = this.add.arc(
+      0, 7, 5, 20, 160, false, 0x583c35
+    );
+
+    this.player.add([
+      this.tail,
+      this.legLeft,
+      this.legRight,
+      this.bodyShape,
+      this.belly,
+      this.earLeft,
+      this.earRight,
+      this.innerEarLeft,
+      this.innerEarRight,
+      this.eyeLeft,
+      this.eyeRight,
+      this.nose,
+      this.mouth
+    ]);
+
+    this.player.setDepth(10);
+
+  }
+
+  // ======================================
+  // 캐릭터 애니메이션
+  // ======================================
+
+  createAnimations() {
+
+    this.runTime = 0;
+
+  }
+
+  animatePlayer(delta) {
+
+    if (!this.player) return;
+
+    this.runTime += delta * 0.012;
+
+    if (this.grounded) {
+
+      const bounce = Math.sin(
+        this.runTime * 2
+      ) * 3;
+
+      this.player.y = this.playerY + bounce;
+
+      this.legLeft.rotation =
+        Math.sin(this.runTime * 2) * 0.35;
+
+      this.legRight.rotation =
+        -Math.sin(this.runTime * 2) * 0.35;
+
+      this.tail.rotation =
+        Math.sin(this.runTime * 2) * 0.25;
+
+    } else {
+
+      this.legLeft.rotation = -0.25;
+      this.legRight.rotation = 0.25;
+
+      this.player.y = this.playerY;
+
+    }
+
+    this.shadow.setPosition(
+      PLAYER_X,
+      this.getFloorY() - 5
+    );
+
+    this.shadow.setScale(
+      this.grounded ? 1 : 0.7
+    );
+
+  }
+
+  // ======================================
+  // 키보드 조작
+  // ======================================
+
+  createControls() {
+
+    this.keys = this.input.keyboard.addKeys({
+      jump: Phaser.Input.Keyboard.KeyCodes.SPACE,
+      up: Phaser.Input.Keyboard.KeyCodes.UP,
+      down: Phaser.Input.Keyboard.KeyCodes.DOWN,
+      pause: Phaser.Input.Keyboard.KeyCodes.ESC,
+      enter: Phaser.Input.Keyboard.KeyCodes.ENTER
+    });
+
+  }
+
+  handleControls() {
+
+    if (
+      Phaser.Input.Keyboard.JustDown(this.keys.enter) &&
+      this.gameState === "menu"
+    ) {
+      this.startGame();
+    }
+
+    if (
+      Phaser.Input.Keyboard.JustDown(this.keys.pause) &&
+      this.gameState === "playing"
+    ) {
+      this.pauseGame();
+    }
+
+    if (this.gameState !== "playing") return;
+
+    // 위층으로 이동
+    if (
+      Phaser.Input.Keyboard.JustDown(this.keys.up)
+    ) {
+      this.changeLane(2);
+    }
+
+    // 아래층으로 이동
+    if (
+      Phaser.Input.Keyboard.JustDown(this.keys.down)
+    ) {
+      this.changeLane(1);
+    }
+
+    // 2단 점프
+    if (
+      Phaser.Input.Keyboard.JustDown(this.keys.jump)
+    ) {
+      this.jump();
+    }
+
+  }
+
+  // ======================================
+  // 층 이동
+  // ======================================
+
+  getFloorY() {
+
+    return this.lane === 2
+      ? FLOOR_TOP
+      : FLOOR_BOTTOM;
+
+  }
+
+  changeLane(newLane) {
+
+    if (newLane === this.lane) return;
+
+    this.lane = newLane;
+    this.playerY = this.getFloorY() - 35;
+
+    // 층 이동 시 점프 초기화
+    this.velocityY = 0;
+    this.jumpCount = 0;
+    this.grounded = true;
+
+    this.player.y = this.playerY;
+
+    this.createEffect(
+      PLAYER_X,
+      this.playerY + 25,
+      0x8dfff2
+    );
+
+    this.showMessage(
+      newLane === 2 ? "2층으로 이동!" : "1층으로 이동!"
+    );
+
+  }
+
+  // ======================================
+  // 점프
+  // ======================================
+
+  jump() {
+
+    if (this.jumpCount >= this.maxJumps) {
+      return;
+    }
+
+    this.velocityY = this.jumpPower;
+
+    this.jumpCount++;
+
+    this.grounded = false;
+
+    if (this.jumpCount === 2) {
+
+      this.velocityY = this.jumpPower * 0.9;
+
+      this.createEffect(
+        PLAYER_X,
+        this.playerY + 20,
+        0xffe69b
+      );
+
+      this.showMessage("2단 점프!");
+
+    }
+
+  }
+
+  updateJump(delta) {
+
+    if (this.grounded) return;
+
+    const dt = delta / 1000;
+
+    this.velocityY += this.gravity * dt;
+
+    this.playerY += this.velocityY * dt;
+
+    const floorY = this.getFloorY() - 35;
+
+    if (this.playerY >= floorY) {
+
+      this.playerY = floorY;
+
+      this.velocityY = 0;
+
+      this.grounded = true;
+
+      this.jumpCount = 0;
+
+      this.createEffect(
+        PLAYER_X,
+        floorY + 30,
+        0xffffff
+      );
+
+    }
+
+    this.player.y = this.playerY;
+
+  }
+
+  // ======================================
+  // UI
+  // ======================================
+
+  createUI() {
+
+    this.scoreText = this.add.text(
+      25, 20, "SCORE  0", {
+        fontSize: "26px",
         color: "#ffffff",
         fontStyle: "bold",
-        stroke: "#333333",
+        stroke: "#30546c",
+        strokeThickness: 5
+      }
+    );
+
+    this.bestText = this.add.text(
+      25, 55,
+      "BEST  " + this.bestScore, {
+        fontSize: "19px",
+        color: "#fff4a5",
+        fontStyle: "bold",
+        stroke: "#30546c",
         strokeThickness: 4
       }
     );
 
-    this.add.text(20, 555,
-      "이동: A / D 또는 방향키   점프: SPACE", {
-        fontSize: "16px",
+    this.laneText = this.add.text(
+      GAME_WIDTH - 25,
+      25,
+      "1층",
+      {
+        fontSize: "24px",
         color: "#ffffff",
-        stroke: "#333333",
-        strokeThickness: 3
+        fontStyle: "bold",
+        stroke: "#30546c",
+        strokeThickness: 4
       }
     );
+
+    this.laneText.setOrigin(1, 0);
+
+    this.messageText = this.add.text(
+      GAME_WIDTH / 2,
+      100,
+      "",
+      {
+        fontSize: "25px",
+        color: "#ffffff",
+        fontStyle: "bold",
+        stroke: "#30546c",
+        strokeThickness: 5
+      }
+    );
+
+    this.messageText.setOrigin(0.5);
+
+    this.messageText.setAlpha(0);
+
+    this.hintText = this.add.text(
+      GAME_WIDTH / 2,
+      GAME_HEIGHT - 25,
+      "SPACE: 점프 / 2단 점프     ↑↓: 층 이동",
+      {
+        fontSize: "17px",
+        color: "#ffffff",
+        stroke: "#30546c",
+        strokeThickness: 4
+      }
+    );
+
+    this.hintText.setOrigin(0.5);
+
   }
 
-  update() {
-    const body = this.cat.body;
-    body.setVelocityX(0);
+  updateUI() {
 
-    if (this.keys.LEFT.isDown || this.keys.A.isDown) {
-      body.setVelocityX(-230);
-    } else if (this.keys.RIGHT.isDown || this.keys.D.isDown) {
-      body.setVelocityX(230);
-    }
+    this.scoreText.setText(
+      "SCORE  " + this.score
+    );
 
-    if (
-      (Phaser.Input.Keyboard.JustDown(this.keys.SPACE) ||
-       Phaser.Input.Keyboard.JustDown(this.keys.UP)) &&
-      body.blocked.down
-    ) {
-      body.setVelocityY(-450);
-    }
+    this.bestText.setText(
+      "BEST  " + this.bestScore
+    );
+
+    this.laneText.setText(
+      this.lane === 2 ? "2층" : "1층"
+    );
+
   }
+
+  showMessage(message) {
+
+    this.messageText.setText(message);
+
+    this.messageText.setAlpha(1);
+
+    this.messageText.setScale(0.8);
+
+    this.tweens.add({
+      targets: this.messageText,
+      alpha: 0,
+      scale: 1.2,
+      duration: 900,
+      ease: "Cubic.easeOut"
+    });
+
+  }
+
+  // ======================================
+  // 시작 화면
+  // ======================================
+
+  createMenu() {
+
+    this.menuBackground = this.add.rectangle(
+      GAME_WIDTH / 2,
+      GAME_HEIGHT / 2,
+      GAME_WIDTH,
+      GAME_HEIGHT,
+      0x173a56,
+      0.82
+    );
+
+    this.menuTitle = this.add.text(
+      GAME_WIDTH / 2,
+      165,
+      "MINI WORLD",
+      {
+        fontSize: "62px",
+        color: "#ffffff",
+        fontStyle: "bold",
+        stroke: "#345e7a",
+        strokeThickness: 8
+      }
+    );
+
+    this.menuTitle.setOrigin(0.5);
+
+    this.menuSub = this.add.text(
+      GAME_WIDTH / 2,
+      235,
+      "ENDLESS CAT RUNNER",
+      {
+        fontSize: "20px",
+        color: "#a9eaff",
+        fontStyle: "bold"
+      }
+    );
+
+    this.menuSub.setOrigin(0.5);
+
+    this.menuBest = this.add.text(
+      GAME_WIDTH / 2,
+      305,
+      "최고 기록: " + this.bestScore,
+      {
+        fontSize: "25px",
+        color: "#ffe59a",
+        fontStyle: "bold"
+      }
+    );
+
+    this.menuBest.setOrigin(0.5);
+
+    this.startButton = this.add.text(
+      GAME_WIDTH / 2,
+      395,
+      "▶  게임 시작",
+      {
+        fontSize: "30px",
+        color: "#ffffff",
+        backgroundColor: "#38a86c",
+        padding: {
+          x: 25,
+          y: 15
+        }
+      }
+    );
+
+    this.startButton.setOrigin(0.5);
+
+    this.startButton.setInteractive({
+      useHandCursor: true
+    });
+
+    this.startButton.on(
+      "pointerdown",
+      () => this.startGame()
+    );
+
+    this.menuHint = this.add.text(
+      GAME_WIDTH / 2,
+      470,
+      "SPACE를 눌러 시작할 수도 있어요!",
+      {
+        fontSize: "17px",
+        color: "#ffffff"
+      }
+    );
+
+    this.menuHint.setOrigin(0.5);
+
+  }
+
+  removeMenu() {
+
+    [
+      this.menuBackground,
+      this.menuTitle,
+      this.menuSub,
+      this.menuBest,
+      this.startButton,
+      this.menuHint
+    ].forEach(item => {
+      if (item) item.destroy();
+    });
+
+  }
+
+  // ======================================
+  // 게임 시작
+  // ======================================
+
+  startGame() {
+
+    if (this.gameState !== "menu") return;
+
+    this.removeMenu();
+
+    this.gameState = "playing";
+
+    this.score = 0;
+    this.distance = 0;
+
+    this.speed = this.baseSpeed;
+
+    this.lane = 1;
+
+    this.playerY = FLOOR_BOTTOM - 35;
+
+    this.velocityY = 0;
+    this.jumpCount = 0;
+    this.grounded = true;
+
+    this.obstacleTimer = 0;
+    this.coinTimer = 0;
+
+    this.nextObstacle = 1.6;
+    this.nextCoin = 2.5;
+
+    this.clearObjects();
+
+    this.player.setVisible(true);
+
+    this.player.setPosition(
+      PLAYER_X,
+      this.playerY
+    );
+
+    this.showMessage("START!");
+
+  }
+
+  // ======================================
+  // 장애물 생성
+  // ======================================
+
+  spawnObstacle() {
+
+    const lane = Phaser.Math.Between(1, 2);
+
+    const x = GAME_WIDTH + 80;
+
+    const y = lane === 2
+      ? FLOOR_TOP - 20
+      : FLOOR_BOTTOM - 20;
+
+    const box = this.add.container(x, y);
+
+    const shadow = this.add.rectangle(
+      4, 8, 48, 45, 0x193d38, 0.25
+    );
+
+    const body = this.add.rectangle(
+      0, 0, 48, 45, 0xb87948
+    );
+
+    const top = this.add.rectangle(
+      0, -19, 48, 8, 0xe0a46c
+    );
+
+    const line1 = this.add.rectangle(
+      0, 0, 5, 45, 0x87512f
+    );
+
+    const line2 = this.add.rectangle(
+      0, 0, 48, 5, 0x87512f
+    );
+
+    box.add([
+      shadow,
+      body,
+      top,
+      line1,
+      line2
+    ]);
+
+    box.setDepth(5);
+
+    this.obstacles.push({
+      object: box,
+      lane: lane,
+      width: 42,
+      height: 42,
+      passed: false
+    });
+
+  }
+
+  // ======================================
+  // 코인 생성
+  // ======================================
+
+  spawnCoin() {
+
+    const lane = Phaser.Math.Between(1, 2);
+
+    const y = lane === 2
+      ? FLOOR_TOP - 80
+      : FLOOR_BOTTOM - 80;
+
+    const coin = this.add.container(
+      GAME_WIDTH + 50,
+      y
+    );
+
+    const circle = this.add.circle(
+      0, 0, 14, 0xffd84d
+    );
+
+    circle.setStrokeStyle(4, 0xffa72c);
+
+    const shine = this.add.circle(
+      -5, -5, 4, 0xffffff, 0.8
+    );
+
+    coin.add([circle, shine]);
+
+    this.tweens.add({
+      targets: coin,
+      scaleX: 0.75,
+      duration: 350,
+      yoyo: true,
+      repeat: -1
+    });
+
+    this.coins.push({
+      object: coin,
+      lane: lane,
+      collected: false
+    });
+
+  }
+
+  // ======================================
+  // 오브젝트 정리
+  // ======================================
+
+  clearObjects() {
+
+    this.obstacles.forEach(item => {
+      item.object.destroy();
+    });
+
+    this.coins.forEach(item => {
+      item.object.destroy();
+    });
+
+    this.particles.forEach(item => {
+      item.destroy();
+    });
+
+    this.obstacles = [];
+    this.coins = [];
+    this.particles = [];
+
+  }
+
+  // ======================================
+  // 효과
+  // ======================================
+
+  createEffect(x, y, color) {
+
+    for (let i = 0; i < 5; i++) {
+
+      const particle = this.add.circle(
+        x,
+        y,
+        Phaser.Math.Between(3, 6),
+        color
+      );
+
+      this.particles.push(particle);
+
+      this.tweens.add({
+        targets: particle,
+        x: x + Phaser.Math.Between(-35, 35),
+        y: y + Phaser.Math.Between(-35, 10),
+        alpha: 0,
+        scale: 0,
+        duration: 450,
+        onComplete: () => {
+          particle.destroy();
+          this.particles = this.particles.filter(
+            p => p !== particle
+          );
+        }
+      });
+
+    }
+
+  }
+
+  // ======================================
+  // 장애물 충돌
+  // ======================================
+
+  checkObstacleCollisions() {
+
+    const playerLane = this.lane;
+
+    const playerY = this.playerY;
+
+    const playerLeft = PLAYER_X - 17;
+    const playerRight = PLAYER_X + 17;
+
+    const playerTop = playerY - 20;
+    const playerBottom = playerY + 20;
+
+    for (const item of this.obstacles) {
+
+      if (item.lane !== playerLane) continue;
+
+      const x = item.object.x;
+
+      const left = x - 24;
+      const right = x + 24;
+
+      const top = item.object.y - 22;
+      const bottom = item.object.y + 22;
+
+      const overlap =
+        playerRight > left &&
+        playerLeft < right &&
+        playerBottom > top &&
+        playerTop < bottom;
+
+      if (overlap) {
+
+        this.gameOver();
+
+        return;
+
+      }
+
+      if (!item.passed && right < PLAYER_X) {
+
+        item.passed = true;
+
+      }
+
+    }
+
+  }
+
+  // ======================================
+  // 코인 충돌
+  // ======================================
+
+  checkCoinCollisions() {
+
+    for (const coin of this.coins) {
+
+      if (coin.collected) continue;
+
+      if (coin.lane !== this.lane) continue;
+
+      const dx = coin.object.x - PLAYER_X;
+      const dy = coin.object.y - this.playerY;
+
+      const distance = Math.sqrt(
+        dx * dx + dy * dy
+      );
+
+      if (distance < 38) {
+
+        coin.collected = true;
+
+        this.score += 50;
+
+        this.createEffect(
+          coin.object.x,
+          coin.object.y,
+          0xffe05a
+        );
+
+        coin.object.destroy();
+
+      }
+
+    }
+
+  }
+
+  // ======================================
+  // 게임 오버
+  // ======================================
+
+  gameOver() {
+
+    if (this.gameState !== "playing") return;
+
+    this.gameState = "gameover";
+
+    this.player.setAlpha(0.5);
+
+    this.score = Math.floor(this.distance);
+
+    if (this.score > this.bestScore) {
+
+      this.bestScore = this.score;
+
+      this.saveBestScore();
+
+    }
+
+    this.updateUI();
+
+    this.createGameOverScreen();
+
+  }
+
+  createGameOverScreen() {
+
+    this.gameOverBackground = this.add.rectangle(
+      GAME_WIDTH / 2,
+      GAME_HEIGHT / 2,
+      GAME_WIDTH,
+      GAME_HEIGHT,
+      0x142d47,
+      0.9
+    );
+
+    this.gameOverTitle = this.add.text(
+      GAME_WIDTH / 2,
+      165,
+      "GAME OVER",
+      {
+        fontSize: "60px",
+        color: "#ff7777",
+        fontStyle: "bold",
+        stroke: "#642e45",
+        strokeThickness: 7
+      }
+    );
+
+    this.gameOverTitle.setOrigin(0.5);
+
+    this.finalScoreText = this.add.text(
+      GAME_WIDTH / 2,
+      255,
+      "점수: " + this.score,
+      {
+        fontSize: "32px",
+        color: "#ffffff",
+        fontStyle: "bold"
+      }
+    );
+
+    this.finalScoreText.setOrigin(0.5);
+
+    this.finalBestText = this.add.text(
+      GAME_WIDTH / 2,
+      305,
+      "최고 기록: " + this.bestScore,
+      {
+        fontSize: "25px",
+        color: "#ffe59a"
+      }
+    );
+
+    this.finalBestText.setOrigin(0.5);
+
+    this.restartButton = this.add.text(
+      GAME_WIDTH / 2,
+      405,
+      "↻  다시 시작",
+      {
+        fontSize: "30px",
+        color: "#ffffff",
+        backgroundColor: "#38a86c",
+        padding: {
+          x: 25,
+          y: 15
+        }
+      }
+    );
+
+    this.restartButton.setOrigin(0.5);
+
+    this.restartButton.setInteractive({
+      useHandCursor: true
+    });
+
+    this.restartButton.on(
+      "pointerdown",
+      () => this.restartGame()
+    );
+
+  }
+
+  // ======================================
+  // 재시작
+  // ======================================
+
+  restartGame() {
+
+    [
+      this.gameOverBackground,
+      this.gameOverTitle,
+      this.finalScoreText,
+      this.finalBestText,
+      this.restartButton
+    ].forEach(item => {
+      if (item) item.destroy();
+    });
+
+    this.player.setAlpha(1);
+
+    this.startGame();
+
+  }
+
+  // ======================================
+  // 일시정지
+  // ======================================
+
+  pauseGame() {
+
+    if (this.gameState !== "playing") return;
+
+    this.gameState = "paused";
+
+    this.pauseBackground = this.add.rectangle(
+      GAME_WIDTH / 2,
+      GAME_HEIGHT / 2,
+      GAME_WIDTH,
+      GAME_HEIGHT,
+      0x172b48,
+      0.85
+    );
+
+    this.pauseText = this.add.text(
+      GAME_WIDTH / 2,
+      GAME_HEIGHT / 2,
+      "PAUSED\n\nESC를 눌러 계속하기",
+      {
+        fontSize: "35px",
+        color: "#ffffff",
+        align: "center",
+        fontStyle: "bold"
+      }
+    );
+
+    this.pauseText.setOrigin(0.5);
+
+  }
+
+  resumeGame() {
+
+    if (this.gameState !== "paused") return;
+
+    this.pauseBackground.destroy();
+    this.pauseText.destroy();
+
+    this.gameState = "playing";
+
+  }
+
+  // ======================================
+  // 배경 움직임
+  // ======================================
+
+  updateBackground(delta) {
+
+    const dt = delta / 1000;
+
+    for (const cloud of this.clouds) {
+
+      cloud.x -= this.speed * dt * 0.12;
+
+      if (cloud.x < -100) {
+        cloud.x = GAME_WIDTH + 100;
+      }
+
+    }
+
+  }
+
+  // ======================================
+  // 오브젝트 이동
+  // ======================================
+
+  updateObjects(delta) {
+
+    const dt = delta / 1000;
+
+    for (const item of this.obstacles) {
+
+      item.object.x -= this.speed * dt;
+
+    }
+
+    for (const item of this.coins) {
+
+      item.object.x -= this.speed * dt;
+
+    }
+
+    this.obstacles = this.obstacles.filter(item => {
+
+      if (item.object.x < -100) {
+
+        item.object.destroy();
+
+        return false;
+
+      }
+
+      return true;
+
+    });
+
+    this.coins = this.coins.filter(item => {
+
+      if (
+        item.object.x < -100 ||
+        item.collected
+      ) {
+
+        if (item.object.active) {
+          item.object.destroy();
+        }
+
+        return false;
+
+      }
+
+      return true;
+
+    });
+
+  }
+
+  // ======================================
+  // 장애물 생성 시간
+  // ======================================
+
+  updateSpawning(delta) {
+
+    const dt = delta / 1000;
+
+    this.obstacleTimer += dt;
+    this.coinTimer += dt;
+
+    if (this.obstacleTimer >= this.nextObstacle) {
+
+      this.spawnObstacle();
+
+      this.obstacleTimer = 0;
+
+      this.nextObstacle =
+        Phaser.Math.FloatBetween(1.5, 2.5);
+
+    }
+
+    if (this.coinTimer >= this.nextCoin) {
+
+      this.spawnCoin();
+
+      this.coinTimer = 0;
+
+      this.nextCoin =
+        Phaser.Math.FloatBetween(2.5, 4);
+
+    }
+
+  }
+
+  // ======================================
+  // 점수와 속도
+  // ======================================
+
+  updateScore(delta) {
+
+    const dt = delta / 1000;
+
+    this.distance += dt * this.speed * 0.04;
+
+    this.score = Math.floor(this.distance);
+
+    this.speed = Math.min(
+      this.maxSpeed,
+      this.baseSpeed + this.distance * 0.08
+    );
+
+  }
+
+  // ======================================
+  // 메인 업데이트
+  // ======================================
+
+  update(time, delta) {
+
+    this.handleControls();
+
+    if (this.gameState === "paused") {
+
+      if (
+        Phaser.Input.Keyboard.JustDown(
+          this.keys.pause
+        )
+      ) {
+        this.resumeGame();
+      }
+
+      return;
+
+    }
+
+    this.updateBackground(delta);
+
+    if (this.gameState !== "playing") return;
+
+    this.updateScore(delta);
+
+    this.updateSpawning(delta);
+
+    this.updateObjects(delta);
+
+    this.updateJump(delta);
+
+    this.animatePlayer(delta);
+
+    this.checkObstacleCollisions();
+
+    if (this.gameState !== "playing") return;
+
+    this.checkCoinCollisions();
+
+    this.updateUI();
+
+  }
+
 }
 
+// ======================================
+// Phaser 설정
+// ======================================
+
 const config = {
+
   type: Phaser.AUTO,
-  width: 800,
-  height: 600,
+
+  parent: "game",
+
+  width: GAME_WIDTH,
+
+  height: GAME_HEIGHT,
+
+  backgroundColor: "#91d9ff",
+
   pixelArt: true,
+
   physics: {
     default: "arcade",
-    arcade: { debug: false }
+    arcade: {
+      debug: false
+    }
   },
-  scene: GameScene
+
+  scale: {
+    mode: Phaser.Scale.FIT,
+    autoCenter: Phaser.Scale.CENTER_BOTH
+  },
+
+  scene: [MiniWorld]
+
 };
 
-new Phaser.Game(config);
+// 게임 실행
+const game = new Phaser.Game(config);
+
 </script>
 </body>
 </html>
