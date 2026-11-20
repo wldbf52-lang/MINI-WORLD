@@ -1,0 +1,133 @@
+
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MINI WORLD</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      font-family: Arial, sans-serif;
+    }
+
+    #title {
+      position: absolute;
+      top: 20px;
+      width: 100%;
+      text-align: center;
+      color: white;
+      font-size: 36px;
+      font-weight: bold;
+      text-shadow: 2px 2px 5px #333;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="title">MINI WORLD</div>
+
+  <script type="module">
+    import * as THREE from
+      'https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js';
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x87ceeb);
+
+    const camera = new THREE.PerspectiveCamera(
+      70, window.innerWidth / window.innerHeight, 0.1, 1000
+    );
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x668866, 2));
+
+    const sun = new THREE.DirectionalLight(0xffffff, 2);
+    sun.position.set(5, 10, 5);
+    scene.add(sun);
+
+    // 하늘섬
+    const island = new THREE.Mesh(
+      new THREE.CylinderGeometry(12, 9, 3, 8),
+      new THREE.MeshStandardMaterial({ color: 0x55bb66 })
+    );
+    island.position.y = -1.5;
+    scene.add(island);
+
+    // 주황색 고양이
+    const cat = new THREE.Group();
+    scene.add(cat);
+
+    const orange = new THREE.MeshStandardMaterial({ color: 0xff922e });
+    const dark = new THREE.MeshStandardMaterial({ color: 0x553322 });
+    const white = new THREE.MeshStandardMaterial({ color: 0xffffff });
+
+    function part(geometry, material, x, y, z) {
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.position.set(x, y, z);
+      cat.add(mesh);
+      return mesh;
+    }
+
+    // 몸통
+    part(new THREE.BoxGeometry(1, 1.2, 0.6), orange, 0, 1.1, 0);
+
+    // 머리
+    part(new THREE.BoxGeometry(1, 0.9, 0.8), orange, 0, 2.2, 0);
+
+    // 귀
+    part(new THREE.ConeGeometry(0.25, 0.5, 4), orange, -0.32, 2.9, 0);
+    part(new THREE.ConeGeometry(0.25, 0.5, 4), orange, 0.32, 2.9, 0);
+
+    // 눈
+    part(new THREE.SphereGeometry(0.07), white, -0.2, 2.25, 0.41);
+    part(new THREE.SphereGeometry(0.07), white, 0.2, 2.25, 0.41);
+
+    // 다리
+    part(new THREE.BoxGeometry(0.3, 0.7, 0.35), orange, -0.28, 0.2, 0);
+    part(new THREE.BoxGeometry(0.3, 0.7, 0.35), orange, 0.28, 0.2, 0);
+
+    // 꼬리
+    const tail = part(
+      new THREE.BoxGeometry(0.2, 0.8, 0.2),
+      orange, 0.65, 1.2, -0.2
+    );
+    tail.rotation.z = -0.5;
+
+    // 카메라
+    camera.position.set(0, 4, 9);
+    camera.lookAt(0, 1, 0);
+
+    // 이동
+    const keys = {};
+    window.addEventListener('keydown', e => keys[e.key.toLowerCase()] = true);
+    window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
+
+    function animate() {
+      requestAnimationFrame(animate);
+
+      if (keys['w']) cat.position.z -= 0.08;
+      if (keys['s']) cat.position.z += 0.08;
+      if (keys['a']) cat.position.x -= 0.08;
+      if (keys['d']) cat.position.x += 0.08;
+
+      camera.position.x = cat.position.x;
+      camera.position.z = cat.position.z + 9;
+      camera.lookAt(cat.position.x, 1, cat.position.z);
+
+      renderer.render(scene, camera);
+    }
+
+    animate();
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+  </script>
+</body>
+</html>
